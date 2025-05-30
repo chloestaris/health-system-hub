@@ -18,11 +18,10 @@ namespace HealthHub.API.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configure indexes and relationships
-            modelBuilder.Entity<Patient>()
-                .HasIndex(p => p.NationalId)
-                .IsUnique();
+            // Configure PostgreSQL-specific settings
+            modelBuilder.UseIdentityColumns();
 
+            // Configure relationships
             modelBuilder.Entity<HealthRecord>()
                 .HasOne(h => h.Patient)
                 .WithMany(p => p.HealthRecords)

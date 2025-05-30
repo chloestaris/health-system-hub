@@ -10,7 +10,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=https://+:443
-      - ConnectionStrings__DefaultConnection=Server=db;Database=HealthHubDB;User=sa;Password=YourStrong!PassW0rd;TrustServerCertificate=True
+      - ConnectionStrings__DefaultConnection=Host=db;Database=healthhubdb;Username=postgres;Password=YourStrongPassW0rd
     volumes:
       - ./certs:/app/certs:ro
     depends_on:
@@ -19,19 +19,20 @@ services:
       - healthhub-network
 
   db:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+    image: postgres:latest
     environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong!PassW0rd
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=YourStrongPassW0rd
+      - POSTGRES_DB=healthhubdb
     ports:
-      - "1433:1433"
+      - "5432:5432"
     volumes:
-      - sqldata:/var/opt/mssql
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - healthhub-network
 
 volumes:
-  sqldata:
+  postgres_data:
 
 networks:
   healthhub-network:

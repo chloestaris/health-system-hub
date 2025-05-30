@@ -7,6 +7,7 @@ using SoapCore;
 using System.Security.Cryptography.X509Certificates;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
+using System.Runtime.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,21 +21,25 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configure Database
+// Configure PostgreSQL
 builder.Services.AddDbContext<HealthHubContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Configure mTLS
 builder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)
     .AddCertificate(options =>
     {
         options.AllowedCertificateTypes = CertificateTypes.All;
-        options.ValidateValidityPeriod = false;  // Disable validity period check for testing
-        options.RevocationMode = X509RevocationMode.NoCheck;  // Disable revocation check for self-signed certs
+        options.ValidateValidityPeriod = false;
+        options.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
     });
 
-// Configure SOAP Core
+// Configure SOAP Core with proper DateTime handling
 builder.Services.AddSoapCore();
+builder.Services.AddSoapModelBindingFilter(new SoapModelBindingFilter
+{
+    DateTimeOffset = DateTimeHandling.ConvertToUtc
+});
 
 // Configure SOAP Services as scoped
 builder.Services.AddScoped<IEhrService, EhrService>();
@@ -47,32 +52,61 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ConfigureHttpsDefaults(https =>
     {
         https.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
-        https.CheckCertificateRevocation = false;  // Disable revocation check for self-signed certs
+        https.CheckCertificateRevocation = false;
         https.ServerCertificateSelector = (context, name) =>
         {
-            // Load the server certificate
-            var serverCert = X509Certificate2.CreateFromPemFile("/app/certs/server.crt", "/app/certs/server.key");
-            return serverCert;
+            return X509Certificate2.CreateFromPemFile("/app/certs/server.crt", "/app/certs/server.key");
         };
-        https.ClientCertificateValidation = (certificate, chain, errors) => true;  // Accept all client certificates
+        https.ClientCertificateValidation = (cert, chain, errors) =>
+        {
+            if (cert == null) return false;
+            
+            using var chainBuilder = new X509Chain
+            {
+                ChainPolicy =
+                {
+                    RevocationMode = X509RevocationMode.NoCheck,
+                    VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority,
+                    TrustMode = X509ChainTrustMode.System
+                }
+            };
+            
+            return chainBuilder.Build(cert);
+        };
     });
 });
 
 var app = builder.Build();
 
-// Initialize Database
+// Initialize database with retries
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    try
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var maxRetries = 5;
+    var retryDelay = TimeSpan.FromSeconds(5);
+
+    for (int i = 0; i < maxRetries; i++)
     {
-        var context = services.GetRequiredService<HealthHubContext>();
-        await DbInitializer.Initialize(context);
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while seeding the database.");
+        try
+        {
+            logger.LogInformation("Attempting database initialization (Attempt {Attempt} of {MaxAttempts})", i + 1, maxRetries);
+            var context = services.GetRequiredService<HealthHubContext>();
+            await context.Database.EnsureCreatedAsync();
+            await DbInitializer.Initialize(context);
+            logger.LogInformation("Database initialization successful");
+            break;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Database initialization attempt {Attempt} of {MaxAttempts} failed", i + 1, maxRetries);
+            if (i == maxRetries - 1)
+            {
+                logger.LogError("All database initialization attempts failed");
+                throw;
+            }
+            await Task.Delay(retryDelay);
+        }
     }
 }
 
@@ -104,13 +138,11 @@ app.Use(async (context, next) =>
     try
     {
         await next();
-        logger.LogInformation("Request {Method} {Path} completed with status {StatusCode}",
-            context.Request.Method, context.Request.Path, context.Response.StatusCode);
+        logger.LogInformation("Request completed: {StatusCode}", context.Response.StatusCode);
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Request {Method} {Path} failed",
-            context.Request.Method, context.Request.Path);
+        logger.LogError(ex, "Request failed");
         throw;
     }
 });
@@ -118,10 +150,12 @@ app.Use(async (context, next) =>
 // Add security headers
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
-    context.Response.Headers.Add("X-Frame-Options", "DENY");
-    context.Response.Headers.Add("X-XSS-Protection", "1; mode=block");
-    context.Response.Headers.Add("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+    context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     await next();
 });
 
@@ -163,24 +197,24 @@ app.Use(async (context, next) =>
                     <soap:Body>
                         <soap:Fault>
                             <faultcode>soap:Server</faultcode>
-                            <faultstring>" + ex.Message + @"</faultstring>
+                            <faultstring>Internal Server Error</faultstring>
                         </soap:Fault>
                     </soap:Body>
                 </soap:Envelope>");
         }
         
-        var logger = context.RequestServices.GetService<ILogger<Program>>();
-        logger?.LogError(ex, "An unhandled exception occurred");
+        throw;
     }
 });
 
-// Configure SOAP endpoints
+// Configure SOAP endpoints with proper DateTime handling
 app.UseEndpoints(endpoints =>
 {
     var encoder = new SoapEncoderOptions
     {
         WriteEncoding = System.Text.Encoding.UTF8,
-        ReaderQuotas = System.Xml.XmlDictionaryReaderQuotas.Max
+        ReaderQuotas = System.Xml.XmlDictionaryReaderQuotas.Max,
+        DateTimeHandling = DateTimeHandling.ConvertToUtc
     };
 
     endpoints.UseSoapEndpoint<IEhrService>("/EhrService.asmx", encoder, SoapSerializer.XmlSerializer);

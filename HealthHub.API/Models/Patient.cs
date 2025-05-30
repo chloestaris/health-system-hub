@@ -7,28 +7,36 @@ namespace HealthHub.API.Models
         public int Id { get; set; }
 
         [Required]
-        [MaxLength(100)]
+        [StringLength(100)]
         public string FirstName { get; set; } = string.Empty;
 
         [Required]
-        [MaxLength(100)]
+        [StringLength(100)]
         public string LastName { get; set; } = string.Empty;
 
         [Required]
-        [MaxLength(50)]
+        [StringLength(50)]
         public string NationalId { get; set; } = string.Empty;
 
         [Required]
-        public DateTime DateOfBirth { get; set; }
+        public DateTime DateOfBirth 
+        { 
+            get => _dateOfBirth;
+            set => _dateOfBirth = DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        }
+        private DateTime _dateOfBirth;
 
-        [MaxLength(200)]
+        [Required]
+        [StringLength(200)]
         public string Address { get; set; } = string.Empty;
 
-        [MaxLength(20)]
+        [Required]
+        [StringLength(20)]
         public string PhoneNumber { get; set; } = string.Empty;
 
+        [Required]
+        [StringLength(100)]
         [EmailAddress]
-        [MaxLength(100)]
         public string Email { get; set; } = string.Empty;
 
         // Navigation property

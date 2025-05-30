@@ -15,6 +15,29 @@ namespace HealthHub.API.Services
             _logger = logger;
         }
 
+        public async Task<bool> ValidatePatientIdentity(string nationalId, DateTime dateOfBirth)
+        {
+            try
+            {
+                // Convert incoming date to UTC
+                var utcDateOfBirth = DateTime.SpecifyKind(dateOfBirth.Date, DateTimeKind.Utc);
+                
+                _logger.LogInformation("Validating patient identity: NationalId={NationalId}, DOB={DateOfBirth}", 
+                    nationalId, utcDateOfBirth);
+
+                var patient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.NationalId == nationalId && 
+                                            p.DateOfBirth.Date == utcDateOfBirth.Date);
+
+                return patient != null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating patient identity with government system");
+                throw;
+            }
+        }
+
         public async Task<bool> ReportHealthRecordAsync(HealthRecord healthRecord)
         {
             try
@@ -50,23 +73,6 @@ namespace HealthHub.API.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error retrieving patient health history from government system");
-                throw;
-            }
-        }
-
-        public async Task<bool> ValidatePatientIdentityAsync(string nationalId, DateTime dateOfBirth)
-        {
-            try
-            {
-                // In a real implementation, this would validate against government ID systems
-                var patient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.NationalId == nationalId && p.DateOfBirth == dateOfBirth);
-
-                return patient != null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error validating patient identity with government system");
                 throw;
             }
         }

@@ -70,7 +70,7 @@ The API will be available at `https://localhost:8443`
 ## Development Notes
 
 - The default password for the SSL certificates is "YourSecurePassword"
-- The SQL Server SA password is "YourStrong!PassW0rd"
+- The SQL Server SA password is "YourStrongPassW0rd"
 - In production, replace all default passwords with secure values
 - Configure proper certificate validation in production
 

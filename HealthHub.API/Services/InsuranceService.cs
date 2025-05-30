@@ -18,13 +18,19 @@ namespace HealthHub.API.Services
 
         public async Task<InsuranceClaimDTO> GetClaimStatus(string claimNumber)
         {
+            _logger.LogInformation("Searching for claim with number: {ClaimNumber}", claimNumber);
+
             var claim = await _context.InsuranceClaims
+                .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.ClaimNumber == claimNumber);
 
             if (claim == null)
             {
+                _logger.LogWarning("Claim with number {ClaimNumber} not found in database", claimNumber);
                 throw new Exception($"Claim with number {claimNumber} not found.");
             }
+
+            _logger.LogInformation("Found claim: ID={Id}, Status={Status}", claim.Id, claim.Status);
 
             return new InsuranceClaimDTO
             {

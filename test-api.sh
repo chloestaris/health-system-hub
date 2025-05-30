@@ -41,27 +41,23 @@ make_soap_request() {
         --cacert "$CA_CERT" \
         -H "Content-Type: text/xml; charset=utf-8" \
         -H "SOAPAction: \"http://healthhub.api.services/$action\"" \
-        -w "\nHTTP Status: %{http_code}" \
         -d "$body" \
         "$BASE_URL$endpoint" 2>&1)
     
-    status_code=$(echo "$response" | grep "HTTP Status:" | cut -d' ' -f3)
-    
-    echo -e "${YELLOW}Full Response:${NC}"
+    echo -e "${YELLOW}Response:${NC}"
     echo "$response"
     echo
     
-    if [ -z "$status_code" ] || [ "$status_code" != "200" ]; then
-        echo -e "${RED}Error: Request failed${NC}"
+    if ! echo "$response" | grep -q "200 OK"; then
+        echo -e "${RED}Request failed${NC}"
         return 1
     fi
 }
 
-echo -e "${GREEN}Starting API Tests...${NC}"
+echo -e "${GREEN}Starting API Tests${NC}"
 echo "----------------------------------------"
 
-# Test EHR Service - GetPatientById
-echo -e "${GREEN}Testing EHR Service...${NC}"
+# Test EHR Service
 make_soap_request "/EhrService.asmx" "GetPatientById" '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://healthhub.api.services">
   <soap:Body>
@@ -71,29 +67,23 @@ make_soap_request "/EhrService.asmx" "GetPatientById" '<?xml version="1.0" encod
   </soap:Body>
 </soap:Envelope>'
 
-echo "----------------------------------------"
-
-# Test Insurance Service - GetClaimStatus
-echo -e "${GREEN}Testing Insurance Service...${NC}"
+# Test Insurance Service
 make_soap_request "/InsuranceService.asmx" "GetClaimStatus" '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://healthhub.api.services">
   <soap:Body>
     <ser:GetClaimStatus>
-      <ser:claimNumber>CLM-20240101-12345678</ser:claimNumber>
+      <ser:claimNumber>CLM123456</ser:claimNumber>
     </ser:GetClaimStatus>
   </soap:Body>
 </soap:Envelope>'
 
-echo "----------------------------------------"
-
-# Test Government Health Service - ValidatePatientIdentity
-echo -e "${GREEN}Testing Government Health Service...${NC}"
+# Test Government Health Service
 make_soap_request "/GovernmentHealthService.asmx" "ValidatePatientIdentity" '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://healthhub.api.services">
   <soap:Body>
     <ser:ValidatePatientIdentity>
       <ser:nationalId>123456789</ser:nationalId>
-      <ser:dateOfBirth>1990-01-01T00:00:00</ser:dateOfBirth>
+      <ser:dateOfBirth>1990-01-01T00:00:00Z</ser:dateOfBirth>
     </ser:ValidatePatientIdentity>
   </soap:Body>
 </soap:Envelope>'

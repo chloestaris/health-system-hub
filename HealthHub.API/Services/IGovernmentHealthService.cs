@@ -1,4 +1,5 @@
 using System.ServiceModel;
+using System.Runtime.Serialization;
 using HealthHub.API.Models;
 
 namespace HealthHub.API.Services
@@ -13,7 +14,9 @@ namespace HealthHub.API.Services
         Task<List<HealthRecord>> GetPatientHealthHistoryAsync(string nationalId);
 
         [OperationContract]
-        Task<bool> ValidatePatientIdentityAsync(string nationalId, DateTime dateOfBirth);
+        Task<bool> ValidatePatientIdentity(
+            [MessageParameter(Name = "nationalId")] string nationalId,
+            [MessageParameter(Name = "dateOfBirth")] DateTime dateOfBirth);
 
         [OperationContract]
         Task<bool> ReportInfectiousDiseaseAsync(HealthRecord healthRecord, string diseaseCode);
